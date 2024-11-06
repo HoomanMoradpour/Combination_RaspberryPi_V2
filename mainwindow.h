@@ -20,6 +20,10 @@
 #include <QMainWindow>
 #include <wiringPi.h>
 #include "DistanceSensor.h"
+#include <QMainWindow>
+#include <QMap>
+#include <QList>
+#include "CSVParser.h"
 
 #ifdef _version5
 using namespace QtCharts;
@@ -33,8 +37,15 @@ QT_END_NAMESPACE
 
 struct weatherDatapoint
 {
-    QString validTime;
-    double values;
+    QDateTime validTime;
+    double value;
+    QDateTime startTime;
+    QDateTime endTime;
+    double temperature;
+    QString windSpeed;
+    double probabilityOfPrecipitation;
+    double relativeHumidity;
+    QString shortForecast;
 };
 
 class MainWindow : public QMainWindow
@@ -46,94 +57,79 @@ public:
     ~MainWindow();
     bool on = false;
 
-    QJsonArray forecastArray;
+    QJsonArray forecastArray_quan;
+    QJsonArray forecastArray_prob;
 
 private:
     Ui::MainWindow *ui;
-    Downloader *downloader;
-    Downloader *downloader_2;
-    Downloader *downloaderGetForcast;
-    Downloader *downloaderGetForcast_2;
+    Downloader *downloader_link;
+    Downloader *downloaderGetForcast_prob;
+    Downloader *downloaderGetForcast_quan;
     QMap<QString, QJsonValue> jsonValues;
-    void showDatainList();
-    void showDatainList_2();
+    void showDatainList_quan();
+    void showDatainList_prob();
     void inigetForecastURL(const QString &url);
-    void inigetForecastURL_2(const QString &url);
-    struct weatherDatapoint
-    {
-        QDateTime validTime;
-        //QDateTime endTime;
-        //double quantitativePrecipitation;
-        //QString windSpeed;
-        double value;
-        //double relativeHumidity;
-        //QString shortForecast;
-    };
-
-    struct weatherDatapoint_2
-    {
-        QDateTime startTime;
-        QDateTime endTime;
-        double temperature;
-        QString windSpeed;
-        double probabilityOfPrecipitation;
-        double relativeHumidity;
-        QString shortForecast;
-    };
+    QMap<QString, QList<Location>> m_stateCityMap;
 
     QJsonArray getForecastArray(const QString &url);
-    QString forecastURL;
-    QString forecastURL_2;
-    QVector<weatherDatapoint> weatherData;
-    QVector<weatherDatapoint_2> weatherData_2;
+    QString forecastURL_quan;
+    QString forecastURL_prob;
+    QVector<weatherDatapoint> weatherData_quan;
+    QVector<weatherDatapoint> weatherData_prob;
 
-    QChart *chart;
-    QChart *chart_1;
-    QChartView *chartView;
-    QChartView *chartView_1;
-    QLineSeries *series;
-    QLineSeries *series_1;
-    QDateTimeAxis *axisX;
-    QDateTimeAxis *axisX_1;
-    QValueAxis *axisY;
-    QValueAxis *axisY_1;
-    QTimer *timer;
+
+
+    QChart *chart_quan;
+    QChart *chart_prob;
+    QChartView *chartView_quan;
+    QChartView *chartView_prob;
+    QLineSeries *series_quan;
+    QLineSeries *series_prob;
+    QDateTimeAxis *axisX_quan;
+    QDateTimeAxis *axisX_prob;
+    QValueAxis *axisY_quan;
+    QValueAxis *axisY_prob;
+    QTimer *Weatherupdatetimer;
     QTimer *timer1;
     QTimer *timer2;
-    QTimer *valveCloseTimer;
     bool isRainExpected = false;
     DistanceSensor DS;
-
-    void setupChart();
-    void setupChart_2();
-    void updateChartData(const QVector<QPair<QDateTime, double>> &data);
+    int check_interval = 10000;
+    double X_corredinate;
+    double Y_corredinate;
+    void setupChart_quan();
+    void setupChart_prob();
+    void updateChartData_prob(const QVector<QPair<QDateTime, double>> &data);
+    void updateChartData_quan(const QVector<QPair<QDateTime, double>> &data);
+    double distance;
+    DistanceSensor sensor;
+    void setupdistanceSensor();
+    double X_coordinate;
+    double Y_coordinate;
+    void on_submitButton_clicked();
 
 public slots:
-    void enable_button();
     void show_json();
-    void show_json_2();
-    void onlistchanged(QListWidgetItem *item);
-    void onlistchanged_2(QListWidgetItem *item);
-    void process_forecast_data();
-    void process_forecast_data_2();
+    void on_exitButton_clicked();
     void getForecastURL(); 
-    void getForecastURL_2();
-    void getWeatherPrediction();
-    void getWeatherPrediction_2();
-    void plotForecast();
-    void plotForecast_2();
+    void getWeatherPrediction_quan();
+    void getWeatherPrediction_prob();
+    void plotForecast_quan();
+    void plotForecast_prob();
     void on_click();
     void Turnoff();
     void TurnOn();
-    void closeWaterValve();
+
 
 private slots:
-    void on_listWidget_currentItemChanged(QListWidgetItem *current, QListWidgetItem *previous);
-    void on_listWidget_contents_currentItemChanged(QListWidgetItem *current, QListWidgetItem *previous);
-    void on_ProcessJson_clicked();
-    void on_comboBox_activated(int index);
     void updateWeatherData();
-    void updateWeatherData_2();
+    void onStateChanged(const QString &state);
+    void onCityChanged(const QString &city);
+
+#ifdef GPIO
     void on_pushButton_Measure_distance_clicked();
+#endif
+
+
 };
 #endif

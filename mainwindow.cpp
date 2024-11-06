@@ -4,49 +4,66 @@
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QValueAxis>
+#include "CSVParser.h"
+#include <QComboBox>
+#include <QLabel>
+#include <QMap>
+#include <QList>
+#include <QStringList>
+#include <QDebug>
 #include <QSplitter>
 #include <QVBoxLayout>
+#include <QMessageBox>
 #include <wiringPi.h>
 #include <iostream>
 #include <unistd.h> // for sleep()
 #include <QTimer>
 #include <QDebug>
+#include <string>
 //#include "DistanceSensor.h"
 #include <cmath>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-
-    , chart(new QChart())
-    , chartView(new QChartView(chart, this))
-    , series(new QLineSeries())
-    , timer(new QTimer(this))
+    , Weatherupdatetimer(new QTimer(this))
 {
     ui->setupUi(this);
-    ui->ProcessJson->setEnabled(true);
+    // After ui->setupUi(this);
+    ui->X_coordinate->setPlaceholderText("Enter X Coordinate");
+    ui->Y_coordinate->setPlaceholderText("Enter Y Coordinate");
+    ui->X_coordinate->setStyleSheet("QLineEdit { color: black; } QLineEdit::placeholder { color: lightgray; }");
+    ui->Y_coordinate->setStyleSheet("QLineEdit { color: black; } QLineEdit::placeholder { color: lightgray; }");
+    connect(ui->submitButton, &QPushButton::clicked, this, &MainWindow::on_submitButton_clicked);
+    connect(ui->exitButton, &QPushButton::clicked, this, &MainWindow::on_exitButton_clicked);
+    disconnect(ui->exitButton, &QPushButton::clicked, this, &MainWindow::on_exitButton_clicked);
+    CSVParser parser("/home/hoomanmoradpour/Downloads/simplemaps_uscities_basicv1.79 (1)/uscities.csv");
+    m_stateCityMap = parser.parse();
 
-    inigetForecastURL("https://api.weather.gov/points/47.2588,-121.3152");
-    inigetForecastURL_2("https://api.weather.gov/points/47.2588,-121.3152");
+    ui->stateComboBox->addItems(m_stateCityMap.keys());
+    //inigetForecastURL("https://api.weather.gov/points/47.2588,-121.3152");
 
-    connect(ui->ProcessJson, SIGNAL(clicked()), this, SLOT(show_json()));
-    connect(ui->listWidget_2, SIGNAL(itemClicked(QListWidgetItem*)), this, SLOT(onlistchanged(QListWidgetItem*)));
-    connect(ui->listWidget_3, SIGNAL(itemClicked(QListWidgetItem*)), this, SLOT(onlistchanged(QListWidgetItem*)));
+    connect(ui->stateComboBox, &QComboBox::currentTextChanged, this, &MainWindow::onStateChanged);
+    connect(ui->cityComboBox, &QComboBox::currentTextChanged, this, &MainWindow::onCityChanged);
 
-    connect(timer, &QTimer::timeout, this, &MainWindow::updateWeatherData);
+    onStateChanged(ui->stateComboBox->currentText());
+
+    connect(Weatherupdatetimer, &QTimer::timeout, this, &MainWindow::updateWeatherData);
+
+    setupdistanceSensor();
     ui->pushButton_Measure_distance->setText("Water Level");
     connect(ui->pushButton_Measure_distance, SIGNAL(clicked()), this, SLOT(on_pushButton_Measure_distance_clicked()));
 
 
-    ui->pushButton->setText("Turn on");
-    connect(ui->pushButton, SIGNAL(clicked()),this, SLOT(on_click()));
+    ui->Valve->setText("Valve on");
+    connect(ui->Valve, SIGNAL(clicked()),this, SLOT(on_click()));
     timer1 = new QTimer(this);
     timer2= new QTimer(this);
     connect(timer1, SIGNAL(timeout()), this, SLOT(Turnoff()));
     connect(timer2, SIGNAL(timeout()), this, SLOT(TurnOn()));
-    valveCloseTimer = new QTimer(this);
-    connect(valveCloseTimer, &QTimer::timeout, this, &MainWindow::closeWaterValve);
 
+
+#ifdef GPIO
     //Prevent warnings from GPIO
     wiringPiSetupGpio(); // Use BCM pin numbering
 
@@ -62,33 +79,94 @@ MainWindow::MainWindow(QWidget *parent)
 
     sensor.cleanup();
     DS.initialize();
+
+ #endif
+
+    setupChart_prob();
+    setupChart_quan();
+
 }
-
-
 
 MainWindow::~MainWindow()
 {
     delete ui;
 }
 
-void MainWindow::on_click()
+void MainWindow::onStateChanged(const QString &state)
+{
+    // Clear the city combo box
+    ui->cityComboBox->clear();
+
+    // Populate the city combo box with cities corresponding to the selected state
+    if (m_stateCityMap.contains(state)) {
+        QList<Location> locations = m_stateCityMap[state];
+        QStringList cities;
+        for (const Location &location : locations) {
+            cities.append(location.city);
+        }
+        ui->cityComboBox->addItems(cities);
+    }
+}
+
+void MainWindow::onCityChanged(const QString &city)
+{
+    // Find the coordinates of the selected city
+    QString state = ui->stateComboBox->currentText();
+    if (m_stateCityMap.contains(state)) {
+        QList<Location> locations = m_stateCityMap[state];
+        for (const Location &location : locations) {
+            if (location.city == city) {
+                //ui->coordinatesLabel->setText(QString("Coordinates: %1, %2")
+                                                 // .arg(location.latitude)
+                                                  //.arg(location.longitude));
+                ui->X_coordinate->setText(QString::number(location.latitude));
+                ui->Y_coordinate->setText(QString::number(location.longitude));
+                return;
+            }
+        }
+    }
+
+    //ui->coordinatesLabel->setText("City not found!");
+    ui->X_coordinate->clear();
+    ui->Y_coordinate->clear();
+}
+
+void MainWindow::on_submitButton_clicked() {
+    bool xOk, yOk;
+    X_coordinate = ui->X_coordinate->text().toDouble(&xOk);
+    Y_coordinate = ui->Y_coordinate->text().toDouble(&yOk);
+
+    if (xOk && yOk) {
+        QString url = QString("https://api.weather.gov/points/%1,%2").arg(X_coordinate).arg(Y_coordinate);
+        qDebug() << "Generated URL: " << url;
+
+        // Call the method to initiate weather fetching
+        inigetForecastURL(url);
+    } else {
+        QMessageBox::warning(this, "Input Error", "Please enter valid coordinates.");
+    }
+}
+
+
+
+/*void MainWindow::on_click()
 {
     if (on)
     {
         on = false;
         digitalWrite(18, HIGH);
-        ui->pushButton->setText("Turn on");
+        ui->pushButton->setText("Valve on");
         //qDebug()<<"Turned off by the user";
-        ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Turned off by the user" );
+        ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Valve off by the user" );
         timer2->start(10000);
     }
     else
     {
         on = true;
         digitalWrite(18, LOW);
-        ui->pushButton->setText("Turn off");
+        ui->pushButton->setText("Valve off");
         //qDebug()<<"Turned on by the user";
-        ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Turned on by the user" );
+        ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Valve on by the user" );
         timer1->start(10000);
     }
 }
@@ -101,7 +179,7 @@ void MainWindow::Turnoff()
         on = false;
         digitalWrite(18, HIGH);
         //qDebug() << "Turned off by timer";
-        ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Turned off by timer" );
+        ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Valve off by timer" );
         ui->pushButton->setText("Turn on");
         timer2->start(10000);
     }
@@ -115,60 +193,103 @@ void MainWindow::TurnOn()
         digitalWrite(18, LOW);
         ui->pushButton->setText("Turn off");
         //qDebug() << "Turned on by timer";
-        ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Turned on by timer" );
+        ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Valve on by timer" );
         timer1->start(10000);
     }
 }
+*/
+
+
+/*DistanceSensor sensor;
+const double MAX_DEPTH = 50.0; // Max depth to keep valve open (in cm)
+const double MIN_DEPTH = 10.0;  // Min depth to close valve (in cm)
+*/
+bool on = false;
+
+void MainWindow::setupdistanceSensor() {
+    //sensor.initialize();
+    //pinMode(18, OUTPUT); // Valve pin
+    // Set up a timer for regular depth checking
+    //depthCheckTimer->start(1000); // Check every second
+}
+
+/*void MainWindow::checkWaterDepth() {
+    double distance = sensor.getDistance();
+
+    if (distance < MIN_DEPTH && on) {
+        Turnoff(); // Turn off the valve if water depth is below MIN_DEPTH
+    } else if (distance > MAX_DEPTH && !on) {
+        TurnOn(); // Turn on the valve if water depth is above MAX_DEPTH
+    }
+}*/
+
+void MainWindow::Turnoff() {
+    if (on) {
+        on = false;
+        //digitalWrite(18, HIGH); // Turn off valve
+        // Update UI
+        //ui->textEdit->append("Valve off by automatic control");
+        ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Valve off by automatic control");
+        ui->Valve->setText("Valve on");
+    }
+}
+
+
+void MainWindow::TurnOn() {
+    if (!on) {
+        on = true;
+        //digitalWrite(18, LOW); // Turn on valve
+        // Update UI
+        ui->textEdit->append("Valve on by automatic control");
+        ui->Valve->setText("Valve off");
+    }
+}
+
+void MainWindow::on_click() {
+    // This function can still be used to manually control the valve
+    if (on) {
+        Turnoff();
+    } else {
+        TurnOn();
+    }
+}
 
 
 
-
-void MainWindow::setupChart()
+void MainWindow::setupChart_quan()
 {
-    series = new QLineSeries();
+    series_quan = new QLineSeries();
 
-    for (int i = 0; i < weatherData.count(); i++)
+    for (int i = 0; i < weatherData_quan.count(); i++)
     {
-        QDateTime momentInTime = weatherData[i].validTime;
-        series->append(momentInTime.toMSecsSinceEpoch(), weatherData[i].value);
+       QDateTime momentInTime = weatherData_quan[i].validTime;
+       series_quan->append(momentInTime.toMSecsSinceEpoch(),weatherData_quan[i].value);
     }
 
-    chart = new QChart();
-    chart->addSeries(series);
-    chart->legend()->hide();
-    chart->setTitle("Quantitative of Precipitation Over Time");
+    chart_quan = new QChart();
+    chart_quan->addSeries(series_quan);
+    chart_quan->legend()->hide();
+    chart_quan->setTitle("Precipitation Intensity");
 
-    axisX = new QDateTimeAxis;
-    axisX->setTickCount(10);
-    axisX->setFormat("dd-MM-yyyy HH:mm");
-    axisX->setTitleText("Date");
-    chart->addAxis(axisX, Qt::AlignBottom);
-    axisX->setLabelsAngle(-90);
-    series->attachAxis(axisX);
+    axisX_quan = new QDateTimeAxis;
+    axisX_quan->setTickCount(10);
+    axisX_quan->setFormat("dd-MM-yyyy HH:mm");
+    axisX_quan->setTitleText("Date");
+    chart_quan->addAxis( axisX_quan, Qt::AlignBottom);
+    axisX_quan->setLabelsAngle(-90);
+    series_quan->attachAxis(axisX_quan);
 
-    axisY = new QValueAxis;
-    axisY->setLabelFormat("%i");
-    axisY->setTitleText("Quantitative of Precipitation (%)");
-    axisY->setRange(0, 100);
-    chart->addAxis(axisY, Qt::AlignLeft);
-    series->attachAxis(axisY);
+    axisY_quan = new QValueAxis;
+    axisY_quan->setLabelFormat("%i");
+    axisY_quan->setTitleText("Precipitation Intensity (mm)");
+    axisY_quan->setRange(0, 100);
+    chart_quan->addAxis(axisY_quan, Qt::AlignLeft);
+    series_quan->attachAxis(axisY_quan);
 
-    chartView = new QChartView(chart);
-    chartView->setRenderHint(QPainter::Antialiasing);
+    chartView_quan = new QChartView(chart_quan);
+    chartView_quan->setRenderHint(QPainter::Antialiasing);
 
-
-
-    QVBoxLayout *layout = new QVBoxLayout(this);
-
-    QSplitter *splitter = new QSplitter(Qt::Vertical, this);
-
-    splitter->addWidget(ui->listWidget_2);
-    splitter->addWidget(chartView);
-    layout->addWidget(splitter);
-    splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 7);
-    //centralWidget()->setLayout(layout);
-    ui->chartLayout_4->addWidget(chartView);
+   ui->LayoutQuanPanel->addWidget(chartView_quan);
     resize(800, 1050);
 
     show();
@@ -176,52 +297,41 @@ void MainWindow::setupChart()
 
 
 
-void MainWindow::setupChart_2()
+void MainWindow::setupChart_prob()
 {
-    series = new QLineSeries();
+  series_prob = new QLineSeries();
 
-    for (int i = 0; i < weatherData.count(); i++)
+    for (int i = 0; i < weatherData_prob.count(); i++)
     {
-        QDateTime momentInTime = weatherData[i].validTime;
-        series->append(momentInTime.toMSecsSinceEpoch(), weatherData[i].value);
+        QDateTime momentInTime =weatherData_prob[i].startTime;
+        series_prob->append(momentInTime.toMSecsSinceEpoch(), weatherData_prob[i].probabilityOfPrecipitation);
     }
 
-    chart_1 = new QChart();
-    chart_1->addSeries(series_1);
-    chart_1->legend()->hide();
-    chart_1->setTitle("Probability of Precipitation Over Time");
+    chart_prob = new QChart();
+    chart_prob->addSeries(series_prob);
+    chart_prob->legend()->hide();
+    chart_prob->setTitle("Probability of Precipitation");
 
-    axisX_1 = new QDateTimeAxis;
-    axisX_1->setTickCount(10);
-    axisX_1->setFormat("dd-MM-yyyy HH:mm");
-    axisX_1->setTitleText("Date");
-    chart_1->addAxis(axisX_1, Qt::AlignBottom);
-    axisX_1->setLabelsAngle(-90);
-    series_1->attachAxis(axisX_1);
+    axisX_prob = new QDateTimeAxis;
+    axisX_prob->setTickCount(10);
+    axisX_prob->setFormat("dd-MM-yyyy HH:mm");
+    axisX_prob->setTitleText("Date");
+    chart_prob->addAxis(axisX_prob, Qt::AlignBottom);
+    axisX_prob->setLabelsAngle(-90);
+    series_prob->attachAxis(axisX_prob);
 
-    axisY_1 = new QValueAxis;
-    axisY_1->setLabelFormat("%i");
-    axisY_1->setTitleText("Probability of Precipitation (%)");
-    axisY_1->setRange(0, 100);
-    chart_1->addAxis(axisY_1, Qt::AlignLeft);
-    series_1->attachAxis(axisY_1);
+    axisY_prob = new QValueAxis;
+    axisY_prob->setLabelFormat("%i");
+    axisY_prob->setTitleText("Probability of Precipitation (%)");
+    axisY_prob->setRange(0, 100);
+    chart_prob->addAxis(axisY_prob, Qt::AlignLeft);
+    series_prob->attachAxis(axisY_prob);
 
-    chartView_1 = new QChartView(chart_1);
-    chartView_1->setRenderHint(QPainter::Antialiasing);
+    chartView_prob = new QChartView(chart_prob);
+    chartView_prob->setRenderHint(QPainter::Antialiasing);
 
 
-
-    QVBoxLayout *layout = new QVBoxLayout(this);
-
-    QSplitter *splitter = new QSplitter(Qt::Vertical, this);
-
-    splitter->addWidget(ui->listWidget_3);
-    splitter->addWidget(chartView_1);
-    layout->addWidget(splitter);
-    splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 7);
-    //centralWidget()->setLayout(layout);
-    ui->chartLayout_4->addWidget(chartView_1);
+    ui->LayoutProbPanel->addWidget(chartView_prob);
     resize(800, 1050);
 
     show();
@@ -229,144 +339,119 @@ void MainWindow::setupChart_2()
 
 
 
-
-
-
-void MainWindow::updateChartData(const QVector<QPair<QDateTime, double>> &data)
+void MainWindow::updateChartData_prob(const QVector<QPair<QDateTime, double>> &data)
 {
-    series->clear();
+    series_prob->clear();
 
+    double max_y = 0;
     for (const auto &point : data) {
         qreal time = point.first.toMSecsSinceEpoch();
-        series->append(time, point.second);
+        series_prob->append(time, point.second);
+        max_y = max(max_y, point.second);
+
     }
 
     if (!data.isEmpty()) {
         qDebug()<<data.first().first<<":"<<data.last().first;
-        axisX->setRange(data.first().first, data.last().first);
-        axisY->setRange(0, 100);
+        axisX_prob->setRange(data.first().first, data.last().first);
+        axisY_prob->setRange(0, max_y);
     }
 }
 
-void MainWindow::plotForecast()
+void MainWindow::updateChartData_quan(const QVector<QPair<QDateTime, double>> &data)
 {
-    QVector<QPair<QDateTime, double>> forecastData;
-
-    for (const auto &dataPoint : weatherData) {
-        forecastData.append(qMakePair(dataPoint.validTime, dataPoint.value));
+    series_quan->clear();
+    double max_y = 0;
+    for (const auto &point : data) {
+        qreal time = point.first.toMSecsSinceEpoch();
+        series_quan->append(time, point.second);
+        max_y = max(max_y, point.second);
     }
 
-    updateChartData(forecastData);
+    if (!data.isEmpty()) {
+        qDebug()<<data.first().first<<":"<<data.last().first;
+        axisX_quan->setRange(data.first().first, data.last().first);
+        axisY_quan->setRange(0, max_y);
+    }
 }
 
-void MainWindow::enable_button()
+void MainWindow::plotForecast_quan()
 {
-    ui->ProcessJson->setEnabled(true);
+    QVector<QPair<QDateTime, double>> forecastData_quan;
+
+    for (const auto &dataPoint : weatherData_quan) {
+        forecastData_quan.append(qMakePair(dataPoint.validTime, dataPoint.value));
+    }
+
+    updateChartData_quan(forecastData_quan);
 }
+
+void MainWindow::plotForecast_prob()
+{
+    QVector<QPair<QDateTime, double>> forecastData_prob;
+
+    for (const auto &dataPoint : weatherData_prob) {
+        forecastData_prob.append(qMakePair(dataPoint.startTime, dataPoint.probabilityOfPrecipitation));
+    }
+
+    updateChartData_prob(forecastData_prob);
+}
+
 
 void MainWindow::show_json()
 {
     ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Graph updated" );
-    //ui->textEdit->setText("\nGraphUpdated");
-    //qDebug() << ui->textEdit->toPlainText();
-    //qDebug() << ui->textEdit->toPlainText() + "\nGraph updated";
-    QJsonObject jsonobject = downloader->loadedJson.object();
-    qDebug() << jsonobject;
+    QJsonObject jsonobject_quan = downloaderGetForcast_quan->loadedJson.object();
+    QJsonObject jsonobject_prob = downloaderGetForcast_prob->loadedJson.object();
+    qDebug() << jsonobject_quan;
 
-    forecastArray = jsonobject.value("properties").toObject().value("forecastGridData").toArray();
+    forecastArray_quan = jsonobject_quan.value("properties").toObject().value("forecastGridData").toArray();
+    forecastArray_prob = jsonobject_prob.value("properties").toObject().value("periods").toArray();
 
-    QString forecastUrl = jsonobject.value("properties").toObject().value("quantitativePrecipitation").toString();
-    qDebug() << "Forecast URL: " << forecastUrl;
-    connect(downloader, SIGNAL(download_finished_sgnl()), this, SLOT(process_forecast_data()));
+    QString forecastUrl_quan = jsonobject_quan.value("properties").toObject().value("quantitativePrecipitation").toString();
+    QString forecastUrl_prob = jsonobject_quan.value("properties").toObject().value("forecastHourly").toString();
+    qDebug() << "Forecast URL: " << forecastUrl_prob;
+    qDebug() << "Forecast URL: " << forecastUrl_quan;
+    connect(downloaderGetForcast_quan, SIGNAL(download_finished_sgnl()), this, SLOT(process_forecast_data_quan()));
+    connect(downloaderGetForcast_prob, SIGNAL(download_finished_sgnl()), this, SLOT(process_forecast_data_prob()));
 
-    if (!forecastUrl.isEmpty()) {
+    if (!forecastUrl_quan.isEmpty() && !forecastUrl_prob.isEmpty()) {
 
-        disconnect(downloader, SIGNAL(download_finished_sgnl()), this, SLOT(enable_button()));
+        disconnect(downloaderGetForcast_quan, SIGNAL(download_finished_sgnl()), this, SLOT(enable_button()));
+        disconnect(downloaderGetForcast_prob, SIGNAL(download_finished_sgnl()), this, SLOT(enable_button()));
 
 
-        downloader->setUrl(forecastUrl);
-        downloader->execute();
-
+        downloaderGetForcast_quan->setUrl(forecastURL_quan);
+        downloaderGetForcast_prob->setUrl(forecastURL_prob);
+        downloaderGetForcast_quan->execute();
+        downloaderGetForcast_prob->execute();
     }
 
-    showDatainList();
-    //setupChart();
-    plotForecast();
-}
-
-void MainWindow::show_json_2()
-{
-    ui->textEdit->setText(ui->textEdit->toPlainText() + "\n" + "Graph updated" );
-    //ui->textEdit->setText("\nGraphUpdated");
-    //qDebug() << ui->textEdit->toPlainText();
-    //qDebug() << ui->textEdit->toPlainText() + "\nGraph updated";
-    QJsonObject jsonobject = downloader_2->loadedJson.object();
-    qDebug() << jsonobject;
-
-    forecastArray = jsonobject.value("properties").toObject().value("forecastGridData").toArray();
-
-    QString forecastUrl = jsonobject.value("properties").toObject().value("quantitativePrecipitation").toString();
-    qDebug() << "Forecast URL: " << forecastUrl;
-    connect(downloader_2, SIGNAL(download_finished_sgnl()), this, SLOT(process_forecast_data()));
-
-    if (!forecastUrl.isEmpty()) {
-
-        disconnect(downloader_2, SIGNAL(download_finished_sgnl()), this, SLOT(enable_button()));
-
-
-        downloader_2->setUrl(forecastUrl);
-        downloader_2->execute();
-
-    }
-
-    showDatainList_2();
-    //setupChart();
-    plotForecast();
+    showDatainList_quan();
+    showDatainList_prob();
 }
 
 
 
+void MainWindow::showDatainList_quan() {
+    ui->listWidgetQuan->clear();
+    for (const auto &dataPoint :weatherData_quan) {
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-void MainWindow::showDatainList() {
-    ui->listWidget_contents_2->clear();
-    for (const auto &dataPoint : weatherData) {
-
-        QString itemText = QString("ValidTime: %1, Value: %2") //Temperature: %3, windSpeed: %4, Probability of Precipitation: %5, Relative Humidity: %6, shortForecast: %7")
+        QString itemText = QString("ValidTime: %1, Value: %2 mm")
                                .arg(dataPoint.validTime.toString(Qt::ISODate))
-                               //.arg(dataPoint.endTime.toString(Qt::ISODate))
-                               //.arg(dataPoint.quantitativePrecipitation)
-                               //.arg(dataPoint.windSpeed)
                                .arg(dataPoint.value)
-            //.arg(dataPoint.relativeHumidity)
-            //.arg(dataPoint.shortForecast)
             ;
 
-        ui->listWidget_contents_2->addItem(itemText);
+        ui->listWidgetQuan->addItem(itemText);
     }
 }
 
 
-void MainWindow::showDatainList_2() {
-    ui->listWidget_contents_3->clear();
-    for (const auto &dataPoint : weatherData_2) {
+void MainWindow::showDatainList_prob() {
+    ui->listWidgetProb->clear();
+    for (const auto &dataPoint : weatherData_prob) {
 
-        QString itemText = QString("Start Time: 1%, End Time: %2, Temperature: %3, windSpeed: %4, Probability of Precipitation: %5, Relative Humidity: %6, shortForecast: %7")
+        QString itemText = QString("Start Time: %1, End Time: %2, Temperature: %3 F, windSpeed: %4 , Probability of Precipitation: %5%, Relative Humidity: %6%, shortForecast: %7")
                                .arg(dataPoint.startTime.toString(Qt::ISODate))
                                .arg(dataPoint.endTime.toString(Qt::ISODate))
                                .arg(dataPoint.temperature)
@@ -375,274 +460,39 @@ void MainWindow::showDatainList_2() {
                                .arg(dataPoint.relativeHumidity)
                                .arg(dataPoint.shortForecast)
             ;
-        ui->listWidget_contents_3->addItem(itemText);
+        ui->listWidgetProb->addItem(itemText);
     }
 }
-
-
-
-
-void MainWindow::process_forecast_data()
-{
-    connect(downloader, &Downloader::download_finished_sgnl, this, &MainWindow::process_forecast_data);
-
-    //connect(downloader, SIGNAL(download_finished_sgnl()), this, SLOT(process_forecast_data()));
-
-    QJsonObject forecastJson = downloader->loadedJson.object();
-    qDebug() << forecastJson;
-
-    QJsonArray hourlyForecastArray = forecastJson.value("properties").toObject().value("quantitativePrecipitation").toArray();
-    weatherData.clear();
-
-    bool rainExpected = false;
-
-    for (const QJsonValue &value : hourlyForecastArray) {
-        QJsonObject forecastObj = value.toObject();
-        weatherDatapoint dataPoint;
-        dataPoint.validTime = QDateTime::fromString(forecastObj.value("validTime").toString(), Qt::ISODate);
-        dataPoint.value = forecastObj.value("value").toDouble();
-
-        if (dataPoint.value > 0) {
-            rainExpected = true;
-        }
-
-        weatherData.append(dataPoint);
-    }
-
-    if (rainExpected) {
-        qDebug() << "Rain is expected. Closing the water valve.";
-        digitalWrite(18, HIGH);
-
-    } else {
-        qDebug() << "No rain expected. Opening the water valve.";
-        digitalWrite(18, LOW);
-        valveCloseTimer->start(5000);
-    }
-
-
-    QJsonValue forecastGridData = forecastJson.value("properties").toObject().value("quantitativePrecipitation");
-
-    if (forecastGridData.isArray())
-    {
-        QJsonArray hourlyForecastArray = forecastGridData.toArray();
-        ui->listWidget_2->clear();
-        weatherData.clear();
-
-        for (const QJsonValue &value : hourlyForecastArray) {
-            QJsonObject forecastObj = value.toObject();
-            weatherDatapoint dataPoint;
-
-            dataPoint.validTime = QDateTime::fromString(forecastObj.value("validTime").toString(), Qt::ISODate);
-            //dataPoint.endTime = QDateTime::fromString(forecastObj.value("endTime").toString(), Qt::ISODate);
-
-            //if (!dataPoint.validTime.isValid() || !dataPoint.endTime.isValid()) {
-            qDebug() << "Invalid date-time format in JSON.";
-        }
-
-        //dataPoint.temperature = forecastObj.value("temperature").toDouble();
-        //dataPoint.windSpeed = forecastObj.value("windSpeed").toString();
-        //dataPoint.quantitativePrecipitation = forecastObj.value("quantitativePrecipitation").toObject().value("value").toDouble();
-        //dataPoint.relativeHumidity = forecastObj.value("relativeHumidity").toObject().value("value").toDouble();
-        //dataPoint.shortForecast = forecastObj.value("shortForecast").toString();
-
-
-        //qDebug() << "Weather Data Size:" << weatherData.size();
-        //for (const auto &dataPoint : weatherData) {
-        // qDebug() << "Start Time:" << dataPoint.validTime;
-        //qDebug() << "End Time:" << dataPoint.endTime;
-        // qDebug() << "Temperature:" << dataPoint.temperature;
-        //qDebug() << "Wind Speed:" << dataPoint.windSpeed;
-        //qDebug() << "Probability of Precipitation:" << dataPoint.quantitativePrecipitation;
-        //qDebug() << "Relative Humidity:" << dataPoint.relativeHumidity;
-        // qDebug() << "Short Forecast:" << dataPoint.shortForecast;
-    }
-
-    //weatherData.append(dataPoint);
-    setupChart();
-    plotForecast();
-    showDatainList();
-}
-
-void MainWindow::process_forecast_data_2()
-{
-    connect(downloader, &Downloader::download_finished_sgnl, this, &MainWindow::process_forecast_data);
-
-    //connect(downloader, SIGNAL(download_finished_sgnl()), this, SLOT(process_forecast_data()));
-
-    QJsonObject forecastJson = downloader_2->loadedJson.object();
-    qDebug() << forecastJson;
-
-    QJsonValue forecastGridData = forecastJson.value("properties").toObject().value("quantitativePrecipitation");
-
-    if (forecastGridData.isArray())
-    {
-        QJsonArray hourlyForecastArray = forecastGridData.toArray();
-        ui->listWidget_3->clear();
-        weatherData_2.clear();
-
-        for (const QJsonValue &value : hourlyForecastArray) {
-                  QJsonObject forecastObj = value.toObject();
-                  weatherDatapoint_2 dataPoint;
-
-                  dataPoint.startTime = QDateTime::fromString(forecastObj.value("startTime").toString(), Qt::ISODate);
-                  dataPoint.endTime = QDateTime::fromString(forecastObj.value("endTime").toString(), Qt::ISODate);
-
-                  if (!dataPoint.startTime.isValid() || !dataPoint.endTime.isValid()) {
-                      qDebug() << "Invalid date-time format in JSON.";
-                  }
-
-        dataPoint.temperature = forecastObj.value("temperature").toDouble();
-        dataPoint.windSpeed = forecastObj.value("windSpeed").toString();
-        dataPoint.probabilityOfPrecipitation = forecastObj.value("probabilityOfPrecipitation").toObject().value("value").toDouble();
-        dataPoint.relativeHumidity = forecastObj.value("relativeHumidity").toObject().value("value").toDouble();
-        dataPoint.shortForecast = forecastObj.value("shortForecast").toString();
-
-
-        qDebug() << "Weather Data Size:" << weatherData_2.size();
-        for (const auto &dataPoint : weatherData_2) {
-        qDebug() << "Start Time:" << dataPoint.startTime;
-        qDebug() << "End Time:" << dataPoint.endTime;
-        qDebug() << "Temperature:" << dataPoint.temperature;
-        qDebug() << "Wind Speed:" << dataPoint.windSpeed;
-        qDebug() << "Probability of Precipitation:" << dataPoint.probabilityOfPrecipitation;
-        qDebug() << "Relative Humidity:" << dataPoint.relativeHumidity;
-        qDebug() << "Short Forecast:" << dataPoint.shortForecast;
-    }
-
-    //weatherData.append(dataPoint);
-
-
-    setupChart_2();
-    plotForecast_2();
-    showDatainList_2();
-    }
-}
-
-
-
-
-
-
-//   plotForecast();
-//} //else {
-//qDebug() << "Unexpected data format for forecast hourly";
-//qDebug() << "Calling showDatainList()";
-//showDatainList();
-
-//}
-//}
-
-
-//void MainWindow:: closeWaterValve() {
-    //  qDebug() << "Closing the water valve after 20 minutes.";
-    //   digitalWrite(18, HIGH);
-     //  valveCloseTimer->stop();
-//}
-
-
-
-void MainWindow::onlistchanged(QListWidgetItem *item)
-{
-    ui->listWidget_contents_2->clear();
-    QJsonValue selectedValue = jsonValues[item->text()];
-
-    if (selectedValue.isString()) {
-        ui->lineEdit->setText(selectedValue.toString());
-    } else if (selectedValue.isObject()) {
-        QJsonObject jsonObject = selectedValue.toObject();
-        foreach (const QString &key, jsonObject.keys()) {
-            QString valueStr = jsonObject.value(key).toString();
-            ui->listWidget_contents_2->addItem(key + ": " + valueStr);
-        }
-    } else if (selectedValue.isArray()) {
-        QJsonArray jsonArray = selectedValue.toArray();
-        for (int i = 0; i < jsonArray.size(); ++i) {
-            QJsonObject jsonObject = jsonArray[i].toObject();
-            foreach (const QString &key, jsonObject.keys()) {
-                QString valueStr = jsonObject.value(key).toString();
-                ui->listWidget_contents_2->addItem(key + ": " + valueStr);
-            }
-        }
-    } else if (selectedValue.isBool()) {
-        ui->lineEdit->setText("Boolean value: " + QString::number(selectedValue.toBool()));
-    } else {
-        ui->lineEdit->setText("Unsupported JSON value type");
-    }
-}
-
-
-void MainWindow::onlistchanged_2(QListWidgetItem *item)
-{
-    ui->listWidget_contents_3->clear();
-    QJsonValue selectedValue = jsonValues[item->text()];
-
-    if (selectedValue.isString()) {
-        ui->lineEdit->setText(selectedValue.toString());
-    } else if (selectedValue.isObject()) {
-        QJsonObject jsonObject = selectedValue.toObject();
-        foreach (const QString &key, jsonObject.keys()) {
-            QString valueStr = jsonObject.value(key).toString();
-            ui->listWidget_contents_3->addItem(key + ": " + valueStr);
-        }
-    } else if (selectedValue.isArray()) {
-        QJsonArray jsonArray = selectedValue.toArray();
-        for (int i = 0; i < jsonArray.size(); ++i) {
-            QJsonObject jsonObject = jsonArray[i].toObject();
-            foreach (const QString &key, jsonObject.keys()) {
-                QString valueStr = jsonObject.value(key).toString();
-                ui->listWidget_contents_3->addItem(key + ": " + valueStr);
-            }
-        }
-    } else if (selectedValue.isBool()) {
-        ui->lineEdit->setText("Boolean value: " + QString::number(selectedValue.toBool()));
-    } else {
-        ui->lineEdit->setText("Unsupported JSON value type");
-    }
-}
-
-
 
 void MainWindow::inigetForecastURL(const QString &url)
 {
-    downloader = new Downloader(url);
-    connect(downloader, SIGNAL(download_finished_sgnl()), this, SLOT(getForecastURL()));
-}
+    downloader_link = new Downloader(url);
 
-void MainWindow::inigetForecastURL_2(const QString &url_2)
-{
-    downloader_2 = new Downloader(url);
-    connect(downloader_2, SIGNAL(download_finished_sgnl()), this, SLOT(getForecastURL_2()));
+    connect(downloader_link, SIGNAL(download_finished_sgnl()), this, SLOT(getForecastURL()));
 }
 
 void MainWindow::getForecastURL()
 {
-    forecastURL = downloader->loadedJson.object().value("properties").toObject().value("forecastGridData").toString();
+
+    forecastURL_quan = downloader_link->loadedJson.object().value("properties").toObject().value("forecastGridData").toString();
+    forecastURL_prob= downloader_link->loadedJson.object().value("properties").toObject().value("forecastHourly").toString();
     //delete downloader;
-    downloaderGetForcast = new Downloader(forecastURL, this);
-    connect(downloaderGetForcast, SIGNAL(download_finished_sgnl()), this, SLOT(getWeatherPrediction()));
+    downloaderGetForcast_quan = new Downloader(forecastURL_quan, this);
+    downloaderGetForcast_prob = new Downloader(forecastURL_prob, this);
+    connect(downloaderGetForcast_quan, SIGNAL(download_finished_sgnl()), this, SLOT(getWeatherPrediction_quan()));
+    connect(downloaderGetForcast_prob, SIGNAL(download_finished_sgnl()), this, SLOT(getWeatherPrediction_prob()));
+
 }
 
 
-void MainWindow::getForecastURL_2()
+void MainWindow::getWeatherPrediction_quan()
 {
-    forecastURL = downloader_2->loadedJson.object().value("properties").toObject().value("forecastGridData").toString();
-    //delete downloader;
-    downloaderGetForcast_2 = new Downloader(forecastURL, this);
-    connect(downloaderGetForcast_2, SIGNAL(download_finished_sgnl()), this, SLOT(getWeatherPrediction()));
-}
-
-
-
-
-
-void MainWindow::getWeatherPrediction()
-{
-    if (!downloaderGetForcast || downloaderGetForcast->loadedJson.isNull()) {
+    if (!downloaderGetForcast_quan || downloaderGetForcast_quan->loadedJson.isNull()) {
         qDebug() << "No valid JSON data loaded.";
         return;
     }
 
-    QJsonObject jsonObject = downloaderGetForcast->loadedJson.object();
+    QJsonObject jsonObject = downloaderGetForcast_quan->loadedJson.object();
     qDebug() << jsonObject;
 
     QJsonObject propObj = jsonObject.value("properties").toObject();
@@ -652,7 +502,7 @@ void MainWindow::getWeatherPrediction()
     qDebug() << periodsArray;
 
 
-
+weatherData_quan.clear();
     for (const QJsonValue &value : periodsArray) {
         QJsonObject forecastObj = value.toObject();
 
@@ -662,67 +512,57 @@ void MainWindow::getWeatherPrediction()
         qDebug()<<forecastObj.value("validTime").toString().split("+")[0];
         dataPoint.validTime = QDateTime::fromString(forecastObj.value("validTime").toString().split("+")[0], Qt::ISODate);
 
-        //dataPoint.endTime = QDateTime::fromString(forecastObj.value("endTime").toString(), Qt::ISODate);
-        //dataPoint.temperature = forecastObj.value("temperature").toDouble();
-        //dataPoint.windSpeed = forecastObj.value("windSpeed").toString();
         dataPoint.value = forecastObj.value("value").toDouble();
-        //dataPoint.relativeHumidity = forecastObj.value("relativeHumidity").toObject().value("value").toDouble();
-        //dataPoint.shortForecast = forecastObj.value("shortForecast").toString();
+
+        weatherData_quan.append(dataPoint);
+       // distance = sensor.getDistance();
+        // Get the distance
 
 
+        // Use the distance and weatherData_quan to decide whether to open the valve or not
 
-        //qDebug() << "Start Time:" << dataPoint.validTime;
-        // qDebug() << "End Time:" << dataPoint.endTime;
-        //qDebug() << "Temperature:" << dataPoint.temperature;
-        //qDebug() << "Wind Speed:" << dataPoint.windSpeed;
-        //qDebug() << "Probability of Precipitation:" << dataPoint.quantitativePrecipitation;
-        // qDebug() << "Relative Humidity:" << dataPoint.relativeHumidity;
-        //qDebug() << "Short Forecast:" << dataPoint.shortForecast;
-
-        weatherData.append(dataPoint);
+        //You don't need timer for distance.
     }
 
-}
-  setupChart();
-  plotForecast();
-  showDatainList();
-
-timer->start(10000);
+  plotForecast_quan();
+  showDatainList_quan();
+ Weatherupdatetimer->start(check_interval);
 }
 
 
-void MainWindow::getWeatherPrediction_2()
+void MainWindow::getWeatherPrediction_prob()
     {
-        if (!downloaderGetForcast_2 || downloaderGetForcast_2->loadedJson.isNull()) {
-            qDebug() << "No valid JSON data loaded.";
-            return;
-        }
 
-        QJsonObject jsonObject = downloaderGetForcast_2->loadedJson.object();
+    if (!downloaderGetForcast_prob || downloaderGetForcast_prob->loadedJson.isNull()) {
+        qDebug() << "No valid JSON data loaded.";
+        return;
+    }
+
+        QJsonObject jsonObject = downloaderGetForcast_prob->loadedJson.object();
         qDebug() << jsonObject;
 
         QJsonObject propObj = jsonObject.value("properties").toObject();
         qDebug() << propObj;
 
-        QJsonArray periodsArray = propObj.value("quantitativePrecipitation").toObject().value("values").toArray();
+        QJsonArray periodsArray = propObj.value("periods").toArray();
         qDebug() << periodsArray;
-
+        weatherData_prob.clear();
     for (const QJsonValue &value : periodsArray) {
         QJsonObject forecastObj = value.toObject();
 
-        weatherDatapoint_2 dataPoint;
+         weatherDatapoint dataPoint;
 
-        qDebug()<<forecastObj.value("value");
-        qDebug()<<forecastObj.value("validTime").toString().split("+")[0];
-        //dataPoint.validTime = QDateTime::fromString(forecastObj.value("validTime").toString().split("+")[0], Qt::ISODate);
+
+        qDebug()<<forecastObj.value("startTime").toString().split("+")[0];
+
+
         dataPoint.startTime = QDateTime::fromString(forecastObj.value("startTime").toString(), Qt::ISODate);
         dataPoint.endTime = QDateTime::fromString(forecastObj.value("endTime").toString(), Qt::ISODate);
         dataPoint.temperature = forecastObj.value("temperature").toDouble();
         dataPoint.windSpeed = forecastObj.value("windSpeed").toString();
-        //dataPoint.value = forecastObj.value("value").toDouble();
+        dataPoint.probabilityOfPrecipitation= forecastObj.value("probabilityOfPrecipitation").toObject().value("value").toDouble();
         dataPoint.relativeHumidity = forecastObj.value("relativeHumidity").toObject().value("value").toDouble();
         dataPoint.shortForecast = forecastObj.value("shortForecast").toString();
-
 
 
         qDebug() << "Start Time:" << dataPoint.startTime;
@@ -733,14 +573,13 @@ void MainWindow::getWeatherPrediction_2()
         qDebug() << "Relative Humidity:" << dataPoint.relativeHumidity;
         qDebug() << "Short Forecast:" << dataPoint.shortForecast;
 
-        weatherData_2.append(dataPoint);
+      weatherData_prob.append(dataPoint);
     }
 
-    setupChart_2();
-    plotForecast_2();
-    showDatainList_2();
 
-    timer->start(10000);
+    plotForecast_prob();
+    showDatainList_prob();
+
 }
 
 
@@ -748,45 +587,29 @@ void MainWindow::updateWeatherData()
 {
     qDebug() << "Updating weather data...";
 
-
-    downloader->setUrl(forecastURL);
-    downloader->execute();
-}
-
-void MainWindow::updateWeatherData_2()
-{
-    qDebug() << "Updating weather data...";
-
-
-    downloader_2->setUrl(forecastURL_2);
-    downloader_2->execute();
-}
-
-void MainWindow::on_listWidget_currentItemChanged(QListWidgetItem *current, QListWidgetItem *previous)
-{
+    downloaderGetForcast_quan->setUrl(forecastURL_quan);
+    downloaderGetForcast_prob->setUrl(forecastURL_prob);
+    downloaderGetForcast_quan->execute();
+    downloaderGetForcast_prob->execute();
 
 }
 
-void MainWindow::on_listWidget_contents_currentItemChanged(QListWidgetItem *current, QListWidgetItem *previous)
-{
+void MainWindow::on_exitButton_clicked() {
 
-}
+    QMessageBox::StandardButton reply;
+    reply = QMessageBox::question(this, "Exit Confirmation",
+                                  "Are you sure you want to quit?",
+                                  QMessageBox::Yes | QMessageBox::No);
 
-void MainWindow::on_ProcessJson_clicked()
-{
-
-}
-
-void MainWindow::on_comboBox_activated(int index)
-{
-
+    if (reply == QMessageBox::Yes) {
+        QApplication::quit(); // Closes the application
+    }
+    // Do nothing if "No"
 }
 
 
 
-
-
-
+#ifdef GPIO
 void MainWindow::on_pushButton_Measure_distance_clicked()
 {
 
@@ -794,3 +617,15 @@ void MainWindow::on_pushButton_Measure_distance_clicked()
     ui->pushButton_Measure_distance;
     ui->label->setText("Water Level: "  +  (QString::number(distance) +  " Cm" ));
 }
+#endif
+
+
+
+
+
+
+
+
+
+
+

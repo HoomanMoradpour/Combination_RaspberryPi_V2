@@ -6,66 +6,110 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>706</width>
-    <height>446</height>
+    <width>917</width>
+    <height>790</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
+   <layout class="QHBoxLayout" name="horizontalLayout" stretch="1,2,2">
     <item>
-     <layout class="QVBoxLayout" name="chartLayout_4">
-      <item>
-       <widget class="QPushButton" name="ProcessJson">
+     <layout class="QGridLayout" name="gridLayout_3">
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_3">
         <property name="text">
-         <string>ProcessJson</string>
+         <string>Y Corredinate</string>
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QPushButton" name="pushButton_Measure_distance">
-        <property name="text">
-         <string>Measure Distance</string>
-        </property>
-       </widget>
-      </item>
-      <item>
+      <item row="9" column="0">
        <widget class="QLabel" name="label">
         <property name="text">
          <string>Water Level</string>
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QListWidget" name="listWidget_contents_2"/>
-      </item>
-      <item>
-       <widget class="QListWidget" name="listWidget_contents_3"/>
-      </item>
-      <item>
-       <widget class="QListWidget" name="listWidget_3"/>
-      </item>
-      <item>
-       <widget class="QListWidget" name="listWidget_2"/>
-      </item>
-      <item>
-       <widget class="QTextEdit" name="textEdit"/>
-      </item>
-      <item>
-       <layout class="QVBoxLayout" name="verticalLayout_3">
-        <item>
-         <widget class="QLineEdit" name="lineEdit"/>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="QPushButton" name="pushButton">
+      <item row="8" column="0">
+       <widget class="QPushButton" name="Valve">
         <property name="text">
-         <string>PushButton</string>
+         <string>Valve</string>
         </property>
        </widget>
+      </item>
+      <item row="12" column="0">
+       <widget class="QLineEdit" name="lineEdit"/>
+      </item>
+      <item row="11" column="0">
+       <widget class="QPushButton" name="exitButton">
+        <property name="text">
+         <string>Exit</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>X Corredinate</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QComboBox" name="cityComboBox"/>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLineEdit" name="Y_coordinate"/>
+      </item>
+      <item row="7" column="0">
+       <widget class="QPushButton" name="submitButton">
+        <property name="text">
+         <string>Get Weather prediciton</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLineEdit" name="X_coordinate"/>
+      </item>
+      <item row="10" column="0">
+       <widget class="QPushButton" name="pushButton_Measure_distance">
+        <property name="text">
+         <string>Measure Distance</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QTextEdit" name="textEdit">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>1</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>200</width>
+          <height>0</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QComboBox" name="stateComboBox"/>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QVBoxLayout" name="LayoutProbPanel">
+      <item>
+       <widget class="QListWidget" name="listWidgetProb"/>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <layout class="QVBoxLayout" name="LayoutQuanPanel">
+      <item>
+       <widget class="QListWidget" name="listWidgetQuan"/>
       </item>
      </layout>
     </item>
@@ -76,8 +120,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>706</width>
-     <height>19</height>
+     <width>917</width>
+     <height>22</height>
     </rect>
    </property>
   </widget>
