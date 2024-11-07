@@ -444,6 +444,17 @@ void MainWindow::showDatainList_quan() {
 
         ui->listWidgetQuan->addItem(itemText);
     }
+
+    cumulative_precipitation = 0;
+    for (int i=0; i<weatherData_quan.size(); i++)
+    {
+        if (weatherData_quan[i].validTime<QDateTime::currentDateTime().addDays(Highlimit_Day) && weatherData_quan[i].validTime>=QDateTime::currentDateTime().addDays(Lowlimit_Day))
+            cumulative_precipitation+=weatherData_quan[i].value;
+
+    }
+    ui->Cumulative->setText("Raining Amount perdiciton: " + QString::number(cumulative_precipitation, 'f', 2) + " mm ");
+
+    qDebug()<<cumulative_precipitation;
 }
 
 

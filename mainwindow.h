@@ -95,6 +95,8 @@ private:
     bool isRainExpected = false;
     DistanceSensor DS;
     int check_interval = 10000;
+    int Highlimit_Day = 3;
+    int Lowlimit_Day = 2;
     double X_corredinate;
     double Y_corredinate;
     void setupChart_quan();
@@ -107,6 +109,7 @@ private:
     double X_coordinate;
     double Y_coordinate;
     void on_submitButton_clicked();
+    double cumulative_precipitation = 0;
 
 public slots:
     void show_json();
