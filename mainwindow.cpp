@@ -29,7 +29,7 @@ MainWindow::MainWindow(QWidget *parent)
     , Weatherupdatetimer(new QTimer(this))
 {
     ui->setupUi(this);
-    // After ui->setupUi(this);
+
     ui->X_coordinate->setPlaceholderText("Enter X Coordinate");
     ui->Y_coordinate->setPlaceholderText("Enter Y Coordinate");
     ui->X_coordinate->setStyleSheet("QLineEdit { color: black; } QLineEdit::placeholder { color: lightgray; }");
@@ -94,10 +94,8 @@ MainWindow::~MainWindow()
 
 void MainWindow::onStateChanged(const QString &state)
 {
-    // Clear the city combo box
     ui->cityComboBox->clear();
 
-    // Populate the city combo box with cities corresponding to the selected state
     if (m_stateCityMap.contains(state)) {
         QList<Location> locations = m_stateCityMap[state];
         QStringList cities;
@@ -110,7 +108,7 @@ void MainWindow::onStateChanged(const QString &state)
 
 void MainWindow::onCityChanged(const QString &city)
 {
-    // Find the coordinates of the selected city
+
     QString state = ui->stateComboBox->currentText();
     if (m_stateCityMap.contains(state)) {
         QList<Location> locations = m_stateCityMap[state];
@@ -140,7 +138,7 @@ void MainWindow::on_submitButton_clicked() {
         QString url = QString("https://api.weather.gov/points/%1,%2").arg(X_coordinate).arg(Y_coordinate);
         qDebug() << "Generated URL: " << url;
 
-        // Call the method to initiate weather fetching
+
         inigetForecastURL(url);
     } else {
         QMessageBox::warning(this, "Input Error", "Please enter valid coordinates.");
@@ -221,6 +219,10 @@ void MainWindow::setupdistanceSensor() {
     } else if (distance > MAX_DEPTH && !on) {
         TurnOn(); // Turn on the valve if water depth is above MAX_DEPTH
     }
+  else if (cumulative_precipitation > 3.0 && distance > 50.0 && !on) {
+        TurnOn();
+    }
+    qdebug() << "valve works"
 }*/
 
 void MainWindow::Turnoff() {
@@ -455,6 +457,10 @@ void MainWindow::showDatainList_quan() {
     ui->Cumulative->setText("Raining Amount perdiciton: " + QString::number(cumulative_precipitation, 'f', 2) + " mm ");
 
     qDebug()<<cumulative_precipitation;
+
+    if (cumulative_precipitation > 3.0) {
+        //checkWaterDepth();  // Check water depth as we have significant precipitation
+    }
 }
 
 
